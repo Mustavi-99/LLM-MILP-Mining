@@ -16,7 +16,6 @@ args = parser.parse_args()
 
 print(f"Initializing Simulation: Periods={args.num_periods}, Grid=({args.x}, {args.y}, {args.z})")
 
-# 2. Build Mine Environment
 state = mining_data((args.x, args.y, args.z))
 arr, block_properties, HnD = state.build(concentration_func=concentration_func)
 
@@ -31,17 +30,14 @@ mining_instance = Mine(
 time_func = Time()
 scheduler = Scheduler(mining_instance, time_func)
 
-# 3. Initialize Actions
 action_list = scheduler.possible_actions()
 scheduler.update_action(action_list, action='initialize')
 
 period = scheduler.time_func.period()
 
-# 4. Main Simulation Loop
 while period <= args.num_periods:
     
-    # Display State
-    print(f"\n--- Time Period {period} ---")
+    print(f"\nTime Period {period}")
     try:
         print(f"Current NPV: {scheduler.mine.npv:.2f}")
     except:
@@ -50,9 +46,7 @@ while period <= args.num_periods:
     print(f"Mine State:\n{scheduler.mine.mine_state()}")
     print(f"Possible Actions:\n{scheduler.possible_actions()}")
 
-    # Input Loop: Collects Choice, Block, and Amount
     while True:
-        # --- Get Choice ---
         mapping = {
             "extract": 1, "extraction": 1, "1": 1,
             "process": 2, "processing": 2, "2": 2
@@ -91,19 +85,16 @@ while period <= args.num_periods:
         else:
             print(f"Action {user_action} is not valid or exceeds capacity. Try again.")
 
-    # 5. Execute Action
     print(f"Executing: {user_action}")
     action_result, pv = scheduler.choosen_action(user_action)
     scheduler.update_action(action_result, present_value=pv)
     scheduler.action(action_result)
 
-    # 6. Check for End of Period or End of Simulation
     if len(scheduler.possible_actions()) == 0:
         print("No more actions in this period. Advancing time...")
         scheduler.time_tick()
-        period = scheduler.time_func.period() # Update loop variable
+        period = scheduler.time_func.period()
         
-        # Check if new period has actions
         if len(scheduler.possible_actions()) == 0:
             print("No more possible actions available in future periods. Simulation Complete.")
             break

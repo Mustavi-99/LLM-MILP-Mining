@@ -36,17 +36,17 @@ During the simulation, the system will prompt you for actions:
 The simulation ends when the final time period is reached or no profitable actions remain.
 
 ## Example Output
-```Plaintext
-Initializing Simulation: Periods=20, Grid=(3, 3, 3)
 
+```
+Initializing Simulation: Periods=20, Grid=(3, 3, 3)
 Time Period 1
 Current NPV: 0.00
 Mine State:
 [...Matrix Data...]
 Possible Actions:
 [(1, 1, 50, ), (1, 2, 50, )...]
-
 Choose action ('extract/1' or 'process/2'): 1
 Enter block number: 1
 Enter amount: 50
 Executing: (1, 1, 50)
+```

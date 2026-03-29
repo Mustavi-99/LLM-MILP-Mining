@@ -1,57 +1,120 @@
+import os
 import pandas as pd
+import logging
 import random
+from datetime import datetime
 from gurobipy import Model, GRB
+
 class Scheduler:
-    def __init__(self, mine,time_func):
+    def __init__(self, mine, time_func):
         self.mine = mine
         self.time_func = time_func
         self.actions_taken = {}
         self.extraction_portions = {}
         self.processing_portions = {}
         self.npv = 0
-        self.check_process=0
+        self.check_process = 0
         self.choice = 'random'
 
-    def schedule(self,choice='random'):
-        choice = choice
+        # Logger setup
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.handlers.clear()
+
+        os.makedirs('/home/mustavi/milpllm/', exist_ok=True)
+
+        formatter = logging.Formatter('%(message)s')
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_handler = logging.FileHandler(f'/home/mustavi/milpllm/scheduler_log_{timestamp}.log')
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(formatter)
+
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+
+    def schedule(self, choice='random'):
         self.choice = choice
         action_list = self.possible_actions()
         work_number = 0
-        # for actions in action_list:
-        #     print(f"{actions}")
-        # print(f"\n{choice} scheduling starts.")
-        self.update_action(action_list,action='initialize')
-        # print(f"Scheduling startsPOIJ.")
+
+        self.logger.info(f"Scheduling started with choice='{choice}'")
+        self.update_action(action_list, action='initialize')
+        self.logger.info(f"Initial possible actions: {action_list}")
         while True:
             if len(action_list):
-                selected_action,pv = self.action_choice(action_list=action_list,choice = choice)
-                self.update_action(selected_action,present_value=pv)
-                if(self.action(selected_action)):
+                selected_action, pv = self.action_choice(action_list=action_list, choice=choice)
+                self.logger.debug(f"Selected action: {selected_action}, present_value={pv}")
+
+                self.update_action(selected_action, present_value=pv)
+
+                if self.action(selected_action):
                     work_number += 1
-                action_list = self.possible_actions()    
+                    self.logger.debug(f"Action executed. Total work_number={work_number}")
+
+                action_list = self.possible_actions()
+                self.logger.info(f"Updated possible actions: {action_list}")
             else:
                 self.time_tick()
-                # print(f"checlp:{self.check_process}")
+                self.logger.info(f"Time ticked. Current period: {self.time_func.period()}")
                 action_list = self.possible_actions()
-                
+
                 if any(t[0] == 2 for t in action_list):
                     self.check_process = 0
+                    # self.logger.debug("Reset check_process (found type-2 action)")
                 else:
                     self.check_process += 1
+                    # self.logger.debug(f"check_process incremented to {self.check_process}")
 
-                if len(action_list) and self.check_process<=50:
-                    self.update_action(action_list,action='initialize')
+                if len(action_list) and self.check_process <= 50:
+                    self.logger.info(f"New possible actions: {action_list}")
+                    self.update_action(action_list, action='initialize')
                 else:
-                    # for i,a in enumerate(action_list):
-                    #     print(f"finale-{i}:{a}")
-                    # print(f"t-{self.time_func.period()}")
-                    
-                    print("Scheduling ends")
+                    self.logger.info(f"Scheduling ends. Total actions executed: {work_number}")
                     break
+    # def schedule(self,choice='random'):
+    #     self.choice = choice
+    #     action_list = self.possible_actions()
+    #     work_number = 0
+    #     # for actions in action_list:
+    #     #     print(f"{actions}")
+    #     # print(f"\n{choice} scheduling starts.")
+    #     self.update_action(action_list,action='initialize')
+    #     # print(f"Scheduling startsPOIJ.")
+    #     while True:
+    #         if len(action_list):
+    #             selected_action,pv = self.action_choice(action_list=action_list,choice = choice)
+    #             self.update_action(selected_action,present_value=pv)
+    #             if(self.action(selected_action)):
+    #                 work_number += 1
+    #             action_list = self.possible_actions()    
+    #         else:
+    #             self.time_tick()
+    #             # print(f"checlp:{self.check_process}")
+    #             action_list = self.possible_actions()
+                
+    #             if any(t[0] == 2 for t in action_list):
+    #                 self.check_process = 0
+    #             else:
+    #                 self.check_process += 1
+
+    #             if len(action_list) and self.check_process<=50:
+    #                 self.update_action(action_list,action='initialize')
+    #             else:
+    #                 # for i,a in enumerate(action_list):
+    #                 #     print(f"finale-{i}:{a}")
+    #                 # print(f"t-{self.time_func.period()}")
+                    
+    #                 print("Scheduling ends")
+    #                 break
 
     def update_action(self,action_list,action = False,present_value = 0):
         period = self.time_func.period()
-    
+        
         if period not in self.actions_taken:
             self.actions_taken[period] = {}
 
@@ -164,34 +227,104 @@ class Scheduler:
         else:
             print("No possible solution.")
 
-    def action_choice(self,action_list,choice='random'):
-        time_period = self.time_func.period()
-        if choice == 'maximum':
-            selected_action = max(action_list, key=lambda x: x[2])
-            choice, block, max_amount,pv = selected_action
-        elif choice =='minimum':
-            selected_action = min(action_list, key=lambda x: x[2])
-            choice, block, max_amount,pv = selected_action
-        elif choice =='greedy':
-            selected_action = max(action_list, key=lambda x: x[3])
-            choice, block, amount,pv = selected_action
-        else:
-            selected_action = random.choice(action_list)
-            choice, block, max_amount,pv = selected_action
-            if choice == 1:
-                capacity_max = self.mine.Mining_capacity_upper[time_period]
-                capacity_min = self.mine.Mining_capacity_lower[time_period]
-                remaining = capacity_max - self.mine.Mining_capacity_used[time_period]
-            else:
-                capacity_max = self.mine.Processing_capacity_upper[time_period]
-                capacity_min = self.mine.Processing_capacity_lower[time_period]
-                remaining = capacity_max - self.mine.Processing_capacity_used[time_period]
+    def action_choice(self, action_list, choice='random'):
+        if not action_list:
+            return None, 0
 
-            amount = random.randint(capacity_min,min(max_amount,remaining)) if capacity_min < min(max_amount,remaining) else min(capacity_min,max_amount,remaining)
+        time_period = self.time_func.period()
+
+        # --- 1. SELECT ACTION STRATEGY ---
+        if choice == 'maximum':
+            # Max Tonnage: Index 2 for Mining, Index 3 for Processing
+            selected_action = max(action_list, key=lambda x: x[2] if x[0] == 1 else x[3])
         
-        pv = self.mine.calculate_NPV((choice, block, amount),time_period, c=True)
+        elif choice == 'minimum':
+            # Min Tonnage
+            selected_action = min(action_list, key=lambda x: x[2] if x[0] == 1 else x[3])
+        
+        elif choice == 'greedy':
+            # Max Value: Always the last element (x[-1])
+            blocks = set(a[1] for a in action_list)  # Unique blocks in the action list
+            block_grades = {block: self.mine.Head_grade[block] for block in blocks}  # Get grades for those blocks
+            selected_action = max(
+                action_list,
+                key=lambda x: (x[-1], block_grades[x[1]])
+            )
+            # selected_action =  max(action_list, key=lambda x: x[-1])
+        
+        else:
+            # Random
+            selected_action = random.choice(action_list)
+
+        # --- 2. UNPACK & DETERMINE AMOUNT ---
+        action_type = selected_action[0]
+        block = selected_action[1]
+        
+        amount = 0.0
+
+        if action_type == 1:
+            # Mining Action format: (1, block, max_extract, value)
+            max_extract = selected_action[2]
+            
+            if choice == 'random':
+                # Random amount between 0 and max available
+                # Note: We use 0 as lower bound unless you have a specific Minimum Mining Rule per block
+                amount = random.uniform(0.0, max_extract)
+            else:
+                # For Greedy/Max, we take the full amount
+                amount = max_extract
+
+        elif action_type == 2:
+            # Processing Action format: (2, block, min_blend, max_blend, value)
+            min_blend = selected_action[2]
+            max_blend = selected_action[3]
+            
+            if choice == 'random':
+                # Random amount MUST be between the chemical constraints (min_blend, max_blend)
+                amount = random.uniform(min_blend, max_blend)
+            else:
+                # For Greedy/Max, we usually process as much as chemically possible
+                amount = max_blend
+
+        # --- 3. CALCULATE FINAL NPV ---
+        # Construct the final tuple expected by the simulator: (Type, Block, Amount)
+        final_action_tuple = (action_type, block, amount)
+        
+        # Calculate NPV for this specific chosen amount
+        pv = self.mine.calculate_NPV(final_action_tuple, time_period, c=True)
+        
+        # Update global state
         pv = self.mine.update_npv(pv)
-        return (choice, block, amount), pv
+        
+        return final_action_tuple, pv
+    # def action_choice(self,action_list,choice='random'):
+    #     time_period = self.time_func.period()
+    #     if choice == 'maximum':
+    #         selected_action = max(action_list, key=lambda x: x[2])
+    #         choice, block, max_amount,pv = selected_action
+    #     elif choice =='minimum':
+    #         selected_action = min(action_list, key=lambda x: x[2])
+    #         choice, block, max_amount,pv = selected_action
+    #     elif choice =='greedy':
+    #         selected_action = max(action_list, key=lambda x: x[3])
+    #         choice, block, amount,pv = selected_action
+    #     else:
+    #         selected_action = random.choice(action_list)
+    #         choice, block, max_amount,pv = selected_action
+    #         if choice == 1:
+    #             capacity_max = self.mine.Mining_capacity_upper[time_period]
+    #             capacity_min = self.mine.Mining_capacity_lower[time_period]
+    #             remaining = capacity_max - self.mine.Mining_capacity_used[time_period]
+    #         else:
+    #             capacity_max = self.mine.Processing_capacity_upper[time_period]
+    #             capacity_min = self.mine.Processing_capacity_lower[time_period]
+    #             remaining = capacity_max - self.mine.Processing_capacity_used[time_period]
+
+    #         amount = random.randint(capacity_min,min(max_amount,remaining)) if capacity_min < min(max_amount,remaining) else min(capacity_min,max_amount,remaining)
+        
+    #     pv = self.mine.calculate_NPV((choice, block, amount),time_period, c=True)
+    #     pv = self.mine.update_npv(pv)
+    #     return (choice, block, amount), pv
     
     def choosen_action(self,action):
         choice, block, max_amount = action
